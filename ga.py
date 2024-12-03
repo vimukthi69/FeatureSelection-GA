@@ -3,7 +3,6 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
-from sklearn.naive_bayes import ComplementNB
 from sklearn.metrics import f1_score, accuracy_score, roc_auc_score
 from deap import base, creator, tools, algorithms
 import random
@@ -12,23 +11,13 @@ from scipy.spatial.distance import pdist, squareform
 
 
 # helper functions
-def calculate_diversity(population):
-    """
-    Calculate diversity in the population based on pairwise Hamming distance.
-    :param population: List of individuals (binary genomes).
-    :return: Average Hamming distance and proportion of active genes.
-    """
-    # Convert population to a binary matrix
-    genome_matrix = np.array(population)
+def get_adaptive_mutation_prob(current_gen, total_gen, min_mutpb=0.2, max_mutpb=0.5):
+    return min_mutpb + ((max_mutpb - min_mutpb) * (current_gen / total_gen))
 
-    # Pairwise Hamming distances
-    hamming_distances = pdist(genome_matrix, metric="hamming")
-    avg_hamming_distance = np.mean(hamming_distances)
 
-    # Proportion of active genes (1s) in the genome
-    active_genes_ratio = np.mean(genome_matrix)
-
-    return avg_hamming_distance, active_genes_ratio
+# Adaptive Crossover function to gradually decrease the crossover probability
+def get_adaptive_crossover_prob(current_gen, total_gen, max_cxpb=0.9, min_cxpb=0.6):
+    return max_cxpb - ((max_cxpb - min_cxpb) * (current_gen / total_gen))
 
 
 # Load encoded features from .npy file
@@ -44,7 +33,6 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_
 # DEAP Setup
 creator.create("FitnessMulti", base.Fitness, weights=(1.0, 1.0, 1.0))  # Maximize all metrics
 creator.create("Individual", list, fitness=creator.FitnessMulti)
-
 toolbox = base.Toolbox()
 
 # Define genome: Binary vector of length equal to the number of features (e.g., 384)
@@ -68,11 +56,12 @@ def fitness_function(individual):
     # Train a Logistic Regression model
     model = LogisticRegression(max_iter=500)
     model.fit(X_train_selected, y_train)
+
     # Train an SVM model
     # model = SVC(probability=True)  # Enable probability predictions for AUC
     # model.fit(X_train_selected, y_train)
+    # Predict and calculate
 
-    # Predict and calculate metrics
     y_pred = model.predict(X_test_selected)
     y_proba = model.predict_proba(X_test_selected)[:, 1]  # Probabilities for AUC calculation
 
@@ -86,12 +75,12 @@ def fitness_function(individual):
 toolbox.register("evaluate", fitness_function)
 
 # Genetic operators
-toolbox.register("mate", tools.cxTwoPoint)  # Two-point crossover
-toolbox.register("mutate", tools.mutFlipBit, indpb=0.05)  # Bit-flip mutation
-toolbox.register("select", tools.selNSGA2)   # NSGA-II selection
+toolbox.register("mate", tools.cxUniform, indpb=0.5)
+toolbox.register("mutate", tools.mutFlipBit, indpb=0.05)
+toolbox.register("select", tools.selNSGA2)
 
 # Parameters
-population_size = 50
+population_size = 100
 num_generations = 100
 crossover_prob = 0.7
 mutation_prob = 0.2
@@ -103,26 +92,72 @@ population = toolbox.population(n=population_size)
 stats_f1 = tools.Statistics(lambda ind: ind.fitness.values[0])
 stats_f1.register("max", np.max)
 stats_f1.register("mean", np.mean)
-
 stats_accuracy = tools.Statistics(lambda ind: ind.fitness.values[1])
 stats_accuracy.register("max", np.max)
 stats_accuracy.register("mean", np.mean)
-
 stats_auc = tools.Statistics(lambda ind: ind.fitness.values[2])
 stats_auc.register("max", np.max)
 stats_auc.register("mean", np.mean)
-
 multi_stats = tools.MultiStatistics(F1=stats_f1, Accuracy=stats_accuracy, AUC=stats_auc)
 
 # Hall of Fame for the Pareto Front
 hof = tools.ParetoFront()
 
-# Store diversity metrics over generations
-diversity_hamming = []
-diversity_active_genes = []
 
-# Run NSGA-II
-result_population, logbook = algorithms.eaMuPlusLambda(
+def eaMuPlusLambdaWithAdaptiveMutation(population, toolbox, mu, lambda_, cxpb, mutpb, ngen, stats=None, verbose=__debug__):
+    logbook = tools.Logbook()
+    logbook.header = ['gen', 'nevals'] + (stats.fields if stats else [])
+
+    # Evaluate the initial population
+    invalid_ind = [ind for ind in population if not ind.fitness.valid]
+    fitnesses = toolbox.map(toolbox.evaluate, invalid_ind)
+    for ind, fit in zip(invalid_ind, fitnesses):
+        ind.fitness.values = fit
+
+    # Ensure Hall of Fame is updated
+    if hof is not None:
+        hof.update(population)
+
+    record = stats.compile(population) if stats else {}
+    logbook.record(gen=0, nevals=len(invalid_ind), **record)
+    if verbose:
+        print(logbook.stream)
+
+    # Begin the generational process
+    for gen in range(1, ngen + 1):
+        # Dynamically calculate mutation probability for this generation
+        current_mutpb = get_adaptive_mutation_prob(gen, ngen)
+        current_cxpb = get_adaptive_crossover_prob(gen, ngen)
+
+        # Select the next generation individuals
+        offspring = toolbox.select(population, lambda_)
+
+        # Vary the offspring with adaptive mutation and crossover
+        offspring = algorithms.varAnd(offspring, toolbox, cxpb=current_cxpb, mutpb=current_mutpb)
+
+        # Evaluate the individuals with an invalid fitness
+        invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
+        fitnesses = toolbox.map(toolbox.evaluate, invalid_ind)
+        for ind, fit in zip(invalid_ind, fitnesses):
+            ind.fitness.values = fit
+
+        # Ensure Hall of Fame is updated after each generation
+        if hof is not None:
+            hof.update(offspring)
+
+        # Combine population and offspring for the next generation
+        population[:] = tools.selNSGA2(offspring + population, mu)
+
+        # Compile statistics
+        record = stats.compile(population) if stats else {}
+        logbook.record(gen=gen, nevals=len(invalid_ind), mutpb=current_mutpb, **record)
+        if verbose:
+            print(logbook.stream)
+
+    return population, logbook
+
+# Run the updated NSGA-II with adaptive mutation
+result_population, logbook = eaMuPlusLambdaWithAdaptiveMutation(
     population,
     toolbox,
     mu=population_size,
@@ -131,31 +166,22 @@ result_population, logbook = algorithms.eaMuPlusLambda(
     mutpb=mutation_prob,
     ngen=num_generations,
     stats=multi_stats,
-    halloffame=hof,
     verbose=True,
 )
-
-# Calculate diversity at each generation
-for gen in range(num_generations + 1):  # +1 because generations start from 0
-    avg_hamming_distance, active_genes_ratio = calculate_diversity(population)
-    diversity_hamming.append(avg_hamming_distance)
-    diversity_active_genes.append(active_genes_ratio)
 
 # Plot F1, Accuracy, and AUC over generations
 generations = logbook.select("gen")
 f1_max = logbook.chapters["F1"].select("max")
 f1_mean = logbook.chapters["F1"].select("mean")
-
 accuracy_max = logbook.chapters["Accuracy"].select("max")
 accuracy_mean = logbook.chapters["Accuracy"].select("mean")
-
 auc_max = logbook.chapters["AUC"].select("max")
 auc_mean = logbook.chapters["AUC"].select("mean")
 
 # Plot F1 Score
 plt.figure(figsize=(12, 4))
-plt.plot(generations, f1_max, label="Max F1 Score", marker="o")
-plt.plot(generations, f1_mean, label="Mean F1 Score", marker="x")
+plt.plot(generations, f1_max, label="Max F1 Score", linestyle='-', color='b', markersize=4, marker='o', alpha=0.7)
+plt.plot(generations, f1_mean, label="Mean F1 Score", linestyle='--', color='g', markersize=4, marker='x', alpha=0.7)
 plt.xlabel("Generation")
 plt.ylabel("F1 Score")
 plt.title("F1 Score Over Generations")
@@ -165,8 +191,8 @@ plt.show()
 
 # Plot Accuracy
 plt.figure(figsize=(12, 4))
-plt.plot(generations, accuracy_max, label="Max Accuracy", marker="o")
-plt.plot(generations, accuracy_mean, label="Mean Accuracy", marker="x")
+plt.plot(generations, accuracy_max, label="Max Accuracy", linestyle='-', color='b', markersize=4, marker='o', alpha=0.7)
+plt.plot(generations, accuracy_mean, label="Mean Accuracy", linestyle='--', color='g', markersize=4, marker='x', alpha=0.7)
 plt.xlabel("Generation")
 plt.ylabel("Accuracy")
 plt.title("Accuracy Over Generations")
@@ -176,8 +202,8 @@ plt.show()
 
 # Plot AUC
 plt.figure(figsize=(12, 4))
-plt.plot(generations, auc_max, label="Max AUC", marker="o")
-plt.plot(generations, auc_mean, label="Mean AUC", marker="x")
+plt.plot(generations, auc_max, label="Max AUC", linestyle='-', color='b', markersize=4, marker='o', alpha=0.7)
+plt.plot(generations, auc_mean, label="Mean AUC", linestyle='--', color='g', markersize=4, marker='x', alpha=0.7)
 plt.xlabel("Generation")
 plt.ylabel("AUC")
 plt.title("AUC Over Generations")
@@ -185,25 +211,6 @@ plt.legend()
 plt.grid(True)
 plt.show()
 
-# Plot Hamming Distance Diversity
-plt.figure(figsize=(12, 4))
-plt.plot(range(num_generations + 1), diversity_hamming, label="Hamming Distance", marker="o")
-plt.xlabel("Generation")
-plt.ylabel("Average Hamming Distance")
-plt.title("Population Diversity (Hamming Distance) Over Generations")
-plt.grid(True)
-plt.legend()
-plt.show()
-
-# Plot Active Genes Diversity
-plt.figure(figsize=(12, 4))
-plt.plot(range(num_generations + 1), diversity_active_genes, label="Active Genes Ratio", marker="x", color="orange")
-plt.xlabel("Generation")
-plt.ylabel("Active Genes Ratio")
-plt.title("Proportion of Active Genes Over Generations")
-plt.grid(True)
-plt.legend()
-plt.show()
 
 # Display Pareto Front
 print("\nPareto Front:")
@@ -214,7 +221,6 @@ for ind in hof:
 # Retrieve the Best Individual Based on F1 Score
 best_individual = max(hof, key=lambda ind: ind.fitness.values[0])  # Maximize F1
 selected_features = [i for i, bit in enumerate(best_individual) if bit == 1]
-
 print("\nBest Individual for F1 Score:")
 print("Selected Features:", len(selected_features))
 print("Fitness Values (F1, Accuracy, AUC):", best_individual.fitness.values)
@@ -231,7 +237,6 @@ svm_model.fit(X_train_selected, y_train)
 # Predict and Evaluate
 y_pred_svm = svm_model.predict(X_test_selected)
 y_proba_svm = svm_model.predict_proba(X_test_selected)[:, 1]
-
 svm_f1 = f1_score(y_test, y_pred_svm)
 svm_accuracy = accuracy_score(y_test, y_pred_svm)
 svm_auc = roc_auc_score(y_test, y_proba_svm)
