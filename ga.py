@@ -83,7 +83,6 @@ population_size = 100
 num_generations = 100
 crossover_prob = 0.7
 mutation_prob = 0.2
-reinit_every_n_generations = 10
 
 # Create the initial population
 population = toolbox.population(n=population_size)
@@ -102,23 +101,6 @@ multi_stats = tools.MultiStatistics(F1=stats_f1, Accuracy=stats_accuracy, AUC=st
 
 # Hall of Fame for the Pareto Front
 hof = tools.ParetoFront()
-
-
-# Introduce diversity by reinitializing a portion of the population every 'n' generations
-def introduce_diversity(population, toolbox, replace_fraction=0.5):
-    num_replace = int(len(population) * replace_fraction)
-    for _ in range(num_replace):
-        # Replace a random individual with a newly initialized one
-        individual = toolbox.individual()
-        population[random.randint(0, len(population) - 1)] = individual
-
-    # Recalculate fitness for all individuals in the population
-    invalid_ind = [ind for ind in population if not ind.fitness.valid]
-    fitnesses = toolbox.map(toolbox.evaluate, invalid_ind)
-    for ind, fit in zip(invalid_ind, fitnesses):
-        ind.fitness.values = fit
-
-    return population
 
 
 def eaMuPlusLambdaWithAdaptiveMutation(population, toolbox, mu, lambda_, cxpb, mutpb, ngen, stats=None, verbose=__debug__):
@@ -164,10 +146,6 @@ def eaMuPlusLambdaWithAdaptiveMutation(population, toolbox, mu, lambda_, cxpb, m
 
         # Combine population and offspring for the next generation
         population[:] = tools.selNSGA2(offspring + population, mu)
-
-        # Introduce diversity periodically (every `reinit_every_n_generations` generations)
-        if gen % reinit_every_n_generations == 0:
-            population = introduce_diversity(population, toolbox, replace_fraction=0.5)
 
         # Compile statistics
         record = stats.compile(population) if stats else {}

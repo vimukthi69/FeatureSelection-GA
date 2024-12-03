@@ -210,39 +210,57 @@ for iteration in range(num_iterations):
     auc_max_all_iterations.append(auc_max)
     auc_mean_all_iterations.append(auc_mean)
 
-# Plot Max and Mean F1 Scores for all iterations
+# Plot Max F1 Score Over Generations for each iteration
 plt.figure(figsize=(12, 4))
 for i in range(num_iterations):
-    plt.plot(generations_all_iterations[0], f1_max_all_iterations[i], label=f"Max F1 Iter {i + 1}")
-    plt.plot(generations_all_iterations[0], f1_mean_all_iterations[i], label=f"Mean F1 Iter {i + 1}", linestyle='--')
+    plt.plot(generations_all_iterations[0], f1_max_all_iterations[i], label=f"Max F1 Iter {i+1}", marker='o', markersize=6, linestyle='-', alpha=0.7)
 plt.xlabel("Generation")
-plt.ylabel("F1 Score")
-plt.title("F1 Score Over Generations (Multiple Iterations)")
+plt.ylabel("Max F1 Score")
+plt.title("Max F1 Score Over Generations (Multiple Iterations)")
 plt.legend()
 plt.grid(True)
 plt.show()
 
-# Plot Max and Mean Accuracy Scores for all iterations
+# Plot Mean F1 Score Over Generations for each iteration
 plt.figure(figsize=(12, 4))
 for i in range(num_iterations):
-    plt.plot(generations_all_iterations[0], accuracy_max_all_iterations[i], label=f"Max Accuracy Iter {i + 1}")
-    plt.plot(generations_all_iterations[0], accuracy_mean_all_iterations[i], label=f"Mean Accuracy Iter {i + 1}",
-             linestyle='--')
+    plt.plot(generations_all_iterations[0], f1_mean_all_iterations[i], label=f"Mean F1 Iter {i+1}", marker='x', markersize=6, linestyle='--', alpha=0.7)
 plt.xlabel("Generation")
-plt.ylabel("Accuracy")
-plt.title("Accuracy Over Generations (Multiple Iterations)")
+plt.ylabel("Mean F1 Score")
+plt.title("Mean F1 Score Over Generations (Multiple Iterations)")
 plt.legend()
 plt.grid(True)
 plt.show()
 
-# Plot Max and Mean AUC Scores for all iterations
+# Plot Max Accuracy Over Generations for each iteration
 plt.figure(figsize=(12, 4))
 for i in range(num_iterations):
-    plt.plot(generations_all_iterations[0], auc_max_all_iterations[i], label=f"Max AUC Iter {i + 1}")
-    plt.plot(generations_all_iterations[0], auc_mean_all_iterations[i], label=f"Mean AUC Iter {i + 1}", linestyle='--')
+    plt.plot(generations_all_iterations[0], accuracy_max_all_iterations[i], label=f"Max Accuracy Iter {i+1}", marker='o', markersize=6, linestyle='-', alpha=0.7)
 plt.xlabel("Generation")
-plt.ylabel("AUC")
-plt.title("AUC Over Generations (Multiple Iterations)")
+plt.ylabel("Max Accuracy")
+plt.title("Max Accuracy Over Generations (Multiple Iterations)")
+plt.legend()
+plt.grid(True)
+plt.show()
+
+# Plot Mean Accuracy Over Generations for each iteration
+plt.figure(figsize=(12, 4))
+for i in range(num_iterations):
+    plt.plot(generations_all_iterations[0], accuracy_mean_all_iterations[i], label=f"Mean Accuracy Iter {i+1}", marker='x', markersize=6, linestyle='--', alpha=0.7)
+plt.xlabel("Generation")
+plt.ylabel("Mean Accuracy")
+plt.title("Mean Accuracy Over Generations (Multiple Iterations)")
+plt.legend()
+plt.grid(True)
+plt.show()
+
+# Plot Max AUC Over Generations for each iteration
+plt.figure(figsize=(12, 4))
+for i in range(num_iterations):
+    plt.plot(generations_all_iterations[0], auc_max_all_iterations[i], label=f"Max AUC Iter {i+1}", marker='o', markersize=6, linestyle='-', alpha=0.7)
+plt.xlabel("Generation")
+plt.ylabel("Max AUC")
+plt.title("Max AUC Over Generations (Multiple Iterations)")
 plt.legend()
 plt.grid(True)
 plt.show()
