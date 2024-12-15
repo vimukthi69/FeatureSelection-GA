@@ -101,8 +101,7 @@ hof = tools.ParetoFront()
 
 
 # Define the GA with adaptive mutation and crossover
-def eaMuPlusLambdaWithAdaptiveMutation(population, toolbox, mu, lambda_, cxpb, mutpb, ngen, stats=None,
-                                       verbose=__debug__):
+def eaMuPlusLambdaWithAdaptiveMutation(population, toolbox, mu, lambda_, ngen, stats=None, verbose=__debug__):
     logbook = tools.Logbook()
     logbook.header = ['gen', 'nevals'] + (stats.fields if stats else [])
 
@@ -182,8 +181,6 @@ for iteration in range(num_iterations):
         toolbox,
         mu=population_size,
         lambda_=population_size,
-        cxpb=crossover_prob,
-        mutpb=mutation_prob,
         ngen=num_generations,
         stats=multi_stats,
         verbose=True,

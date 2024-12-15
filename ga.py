@@ -103,7 +103,7 @@ multi_stats = tools.MultiStatistics(F1=stats_f1, Accuracy=stats_accuracy, AUC=st
 hof = tools.ParetoFront()
 
 
-def eaMuPlusLambdaWithAdaptiveMutation(population, toolbox, mu, lambda_, cxpb, mutpb, ngen, stats=None, verbose=__debug__):
+def eaMuPlusLambdaWithAdaptiveMutation(population, toolbox, mu, lambda_, ngen, stats=None, verbose=__debug__):
     logbook = tools.Logbook()
     logbook.header = ['gen', 'nevals'] + (stats.fields if stats else [])
 
@@ -162,8 +162,6 @@ result_population, logbook = eaMuPlusLambdaWithAdaptiveMutation(
     toolbox,
     mu=population_size,
     lambda_=population_size,
-    cxpb=crossover_prob,
-    mutpb=mutation_prob,
     ngen=num_generations,
     stats=multi_stats,
     verbose=True,
