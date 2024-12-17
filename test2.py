@@ -19,6 +19,39 @@ def get_adaptive_crossover_prob(current_gen, total_gen, max_cxpb=0.9, min_cxpb=0
     return max_cxpb - ((max_cxpb - min_cxpb) * (current_gen / total_gen))
 
 
+def calculate_population_diversity(population):
+    unique_individuals = len(set(map(tuple, population)))  # Counting unique individuals
+    total_population = len(population)
+    diversity = unique_individuals / total_population
+    return diversity
+
+
+def restart_population(population, toolbox, proportion):
+    size = int(len(population) * proportion)
+    print(f"Triggering population restart: Replacing {size} individuals.")
+
+    # Replace the specified proportion with new individuals
+    for i in range(size):
+        population[-(i + 1)] = toolbox.individual()
+
+    # Evaluate the new individuals to assign fitness
+    invalid_ind = [ind for ind in population if not ind.fitness.valid]
+    fitnesses = toolbox.map(toolbox.evaluate, invalid_ind)
+    for ind, fit in zip(invalid_ind, fitnesses):
+        ind.fitness.values = fit
+
+
+def probabilistic_elitism(population, elite_ratio=0.1, retain_prob=0.7):
+    elite_size = int(len(population) * elite_ratio)
+    parents_sorted = tools.sortNondominated(population, len(population), first_front_only=True)[0]
+    elite_parents = parents_sorted[:elite_size]  # Top elites
+
+    # Retain elites probabilistically
+    retained_elites = [ind for ind in elite_parents if random.random() < retain_prob]
+    print(f"Retaining {len(retained_elites)} elite individuals probabilistically.")
+    return retained_elites
+
+
 # Load encoded features from .npy file
 X = np.load('encoded_text.npy')
 
@@ -72,12 +105,12 @@ toolbox.register("evaluate", fitness_function)
 toolbox.register("mate", tools.cxUniform, indpb=0.5)
 toolbox.register("mutate", tools.mutFlipBit, indpb=0.05)
 toolbox.register("select", tools.selNSGA2)
+toolbox.register("tournament", tools.selTournamentDCD)
 
 # Parameters
 population_size = 100
 num_generations = 100
-crossover_prob = 0.7
-mutation_prob = 0.2
+mutation_probability = 0.3
 
 # Create the initial population
 population = toolbox.population(n=population_size)
@@ -98,7 +131,7 @@ multi_stats = tools.MultiStatistics(F1=stats_f1, Accuracy=stats_accuracy, AUC=st
 hof = tools.ParetoFront()
 
 
-def eaMuPlusLambdaWithAdaptiveMutation(population, toolbox, mu, lambda_, ngen, stats=None, verbose=__debug__):
+def eaMuPlusLambdaWithAdaptiveMutation(population, toolbox, mu, lambda_, mutpb, ngen, stats=None, verbose=__debug__):
     logbook = tools.Logbook()
     logbook.header = ['gen', 'nevals'] + (stats.fields if stats else [])
 
@@ -117,34 +150,60 @@ def eaMuPlusLambdaWithAdaptiveMutation(population, toolbox, mu, lambda_, ngen, s
     if verbose:
         print(logbook.stream)
 
+    stagnant_generations = 0
+    max_stagnant_generations = 3
+
     # Begin the generational process
     for gen in range(1, ngen + 1):
+        # Calculate population diversity
+        diversity = calculate_population_diversity(population)
+        print(f"Generation {gen}: Diversity = {diversity:.2f}")
+
+        # Check for stagnant diversity
+        if diversity < 0.9:
+            stagnant_generations += 1
+        else:
+            stagnant_generations = 0
+
+        # Trigger population restart if stagnation persists
+        if stagnant_generations >= max_stagnant_generations:
+            restart_population(population, toolbox, proportion=0.8)
+            stagnant_generations = 0
+
         # Dynamically calculate mutation probability for this generation
-        current_mutpb = get_adaptive_mutation_prob(gen, ngen)
         current_cxpb = get_adaptive_crossover_prob(gen, ngen)
 
-        # Select the next generation individuals
-        offspring = toolbox.select(population, lambda_)
+        # Compute Pareto fronts and crowding distances
+        fronts = tools.sortNondominated(population, k=len(population), first_front_only=False)
+        for front in fronts:
+            tools.emo.assignCrowdingDist(front)
 
-        # Vary the offspring with adaptive mutation and crossover
-        offspring = algorithms.varAnd(offspring, toolbox, cxpb=current_cxpb, mutpb=current_mutpb)
+        # Select the mating pool using selTournamentDCD
+        offspring = toolbox.tournament(population, lambda_)
 
-        # Evaluate the individuals with an invalid fitness
+        # Apply variation (crossover and mutation)
+        offspring = algorithms.varAnd(offspring, toolbox, cxpb=current_cxpb, mutpb=mutpb)
+
+        # Evaluate offspring fitness
         invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
         fitnesses = toolbox.map(toolbox.evaluate, invalid_ind)
         for ind, fit in zip(invalid_ind, fitnesses):
             ind.fitness.values = fit
 
-        # Ensure Hall of Fame is updated after each generation
+        # Update Hall of Fame with both offspring and population
         if hof is not None:
-            hof.update(offspring)
+            hof.update(offspring + population)
 
-        # Combine population and offspring for the next generation
-        population[:] = tools.selNSGA2(offspring + population, mu)
+        # Retain probabilistic elites
+        retained_elites = probabilistic_elitism(population, elite_ratio=0.1, retain_prob=0.7)
+        combined_population = retained_elites + offspring
 
-        # Compile statistics
+        # Select the next generation using NSGA-II
+        population[:] = tools.selNSGA2(combined_population, mu)
+
+        # Compile and log statistics
         record = stats.compile(population) if stats else {}
-        logbook.record(gen=gen, nevals=len(invalid_ind), mutpb=current_mutpb, **record)
+        logbook.record(gen=gen, nevals=len(invalid_ind), mutpb=mutpb, cxpb=current_cxpb, **record)
         if verbose:
             print(logbook.stream)
 
@@ -157,6 +216,7 @@ result_population, logbook = eaMuPlusLambdaWithAdaptiveMutation(
     toolbox,
     mu=population_size,
     lambda_=population_size,
+    mutpb=mutation_probability,
     ngen=num_generations,
     stats=multi_stats,
     verbose=True,
