@@ -110,7 +110,6 @@ toolbox.register("tournament", tools.selTournamentDCD)
 # Parameters
 population_size = 100
 num_generations = 100
-mutation_probability = 0.3
 
 # Create the initial population
 population = toolbox.population(n=population_size)
@@ -131,9 +130,11 @@ multi_stats = tools.MultiStatistics(F1=stats_f1, Accuracy=stats_accuracy, AUC=st
 hof = tools.ParetoFront()
 
 
-def eaMuPlusLambdaWithAdaptiveMutation(population, toolbox, mu, lambda_, mutpb, ngen, stats=None, verbose=__debug__):
+def eaMuPlusLambdaWithAdaptiveMutation(population, toolbox, mu, lambda_, ngen, stats=None, verbose=__debug__):
     logbook = tools.Logbook()
     logbook.header = ['gen', 'nevals'] + (stats.fields if stats else [])
+
+    diversity_values = []
 
     # Evaluate the initial population
     invalid_ind = [ind for ind in population if not ind.fitness.valid]
@@ -153,10 +154,15 @@ def eaMuPlusLambdaWithAdaptiveMutation(population, toolbox, mu, lambda_, mutpb, 
     stagnant_generations = 0
     max_stagnant_generations = 3
 
+    # Log initial diversity
+    diversity = calculate_population_diversity(population)
+    diversity_values.append(diversity)
+
     # Begin the generational process
     for gen in range(1, ngen + 1):
         # Calculate population diversity
         diversity = calculate_population_diversity(population)
+        diversity_values.append(diversity)
         print(f"Generation {gen}: Diversity = {diversity:.2f}")
 
         # Check for stagnant diversity
@@ -171,6 +177,7 @@ def eaMuPlusLambdaWithAdaptiveMutation(population, toolbox, mu, lambda_, mutpb, 
             stagnant_generations = 0
 
         # Dynamically calculate mutation probability for this generation
+        current_mutpb = get_adaptive_mutation_prob(gen, ngen)
         current_cxpb = get_adaptive_crossover_prob(gen, ngen)
 
         # Compute Pareto fronts and crowding distances
@@ -182,7 +189,7 @@ def eaMuPlusLambdaWithAdaptiveMutation(population, toolbox, mu, lambda_, mutpb, 
         offspring = toolbox.tournament(population, lambda_)
 
         # Apply variation (crossover and mutation)
-        offspring = algorithms.varAnd(offspring, toolbox, cxpb=current_cxpb, mutpb=mutpb)
+        offspring = algorithms.varAnd(offspring, toolbox, cxpb=current_cxpb, mutpb=current_mutpb)
 
         # Evaluate offspring fitness
         invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
@@ -203,20 +210,19 @@ def eaMuPlusLambdaWithAdaptiveMutation(population, toolbox, mu, lambda_, mutpb, 
 
         # Compile and log statistics
         record = stats.compile(population) if stats else {}
-        logbook.record(gen=gen, nevals=len(invalid_ind), mutpb=mutpb, cxpb=current_cxpb, **record)
+        logbook.record(gen=gen, nevals=len(invalid_ind), mutpb=current_mutpb, cxpb=current_cxpb, **record)
         if verbose:
             print(logbook.stream)
 
-    return population, logbook
+    return population, logbook, diversity_values
 
 
 # Run the updated NSGA-II with adaptive mutation
-result_population, logbook = eaMuPlusLambdaWithAdaptiveMutation(
+result_population, logbook, diversity_values = eaMuPlusLambdaWithAdaptiveMutation(
     population,
     toolbox,
     mu=population_size,
     lambda_=population_size,
-    mutpb=mutation_probability,
     ngen=num_generations,
     stats=multi_stats,
     verbose=True,
@@ -260,6 +266,16 @@ plt.plot(generations, auc_mean, label="Mean AUC", linestyle='--', color='g', mar
 plt.xlabel("Generation")
 plt.ylabel("AUC")
 plt.title("AUC Over Generations")
+plt.legend()
+plt.grid(True)
+plt.show()
+
+# Plot Diversity Over Generations
+plt.figure(figsize=(12, 4))
+plt.plot(generations, diversity_values, label="Diversity", color='purple', linestyle='-', marker='o', alpha=0.7)
+plt.xlabel("Generation")
+plt.ylabel("Diversity")
+plt.title("Diversity Over Generations")
 plt.legend()
 plt.grid(True)
 plt.show()
