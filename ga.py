@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 
 
 # -------------------------- helper functions --------------------------
-# Adaptive Crossover function to gradually decrease the crossover probability
 def get_adaptive_crossover_prob(current_gen, total_gen, max_cxpb=0.9, min_cxpb=0.6):
     return max_cxpb - ((max_cxpb - min_cxpb) * (current_gen / total_gen))
 
@@ -27,16 +26,16 @@ def calculate_population_diversity(population):
 
 
 # dataset preparation for fitness function
-X = np.load('encoded_text.npy')  # Load encoded features from .npy file
-df = pd.read_csv('dataset/processed_sentiment_data.csv')  # Load the sentiment labels
-y = df['sentiment']  # Load binaries (target class)
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)  # train test split
+X = np.load('encoded_text.npy')
+df = pd.read_csv('dataset/processed_sentiment_data.csv')
+y = df['sentiment']
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
 # -------------------------- DEAP Setup --------------------------
 creator.create("FitnessMulti", base.Fitness, weights=(1.0, 1.0, 1.0))  # to maximize all metrics
 creator.create("Individual", list, fitness=creator.FitnessMulti)
 toolbox = base.Toolbox()
-n_features = X_train.shape[1]  # retrieving genome size, which should be 384
+n_features = X_train.shape[1]  # retrieving genome size, which is 384
 toolbox.register("attr_bool", random.randint, 0, 1)
 toolbox.register("individual", tools.initRepeat, creator.Individual, toolbox.attr_bool, n_features)
 toolbox.register("population", tools.initRepeat, list, toolbox.individual)
@@ -44,16 +43,16 @@ toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
 # Fitness function
 def fitness_function(individual):
-    # Select features based on the binary coded individual
+    # Selecting features based on the binary coded individual
     selected_features = [i for i, bit in enumerate(individual) if bit == 1]
     if not selected_features:  # Handling case where no features are selected
-        return 0.0, 0.0, 0.0  # Return all metrics as 0.0
+        return 0.0, 0.0, 0.0
 
-    # Subset the training and test data
+    # Subset of the training and test data
     X_train_selected = X_train[:, selected_features]
     X_test_selected = X_test[:, selected_features]
 
-    # Train a Logistic Regression model
+    # Logistic Regression model
     model = LogisticRegression(max_iter=500)
     model.fit(X_train_selected, y_train)
 
@@ -99,7 +98,7 @@ hof = tools.ParetoFront()
 
 
 # -------------------------- Evolution process --------------------------
-def eaMuPlusLambdaWithAdaptiveMutation(population, toolbox, mu, lambda_, ngen, stats=None, verbose=__debug__):
+def ea_custom(population, toolbox, mu, lambda_, ngen, stats=None, verbose=__debug__):
     logbook = tools.Logbook()
     logbook.header = ['gen', 'nevals'] + (stats.fields if stats else [])
 
@@ -130,7 +129,7 @@ def eaMuPlusLambdaWithAdaptiveMutation(population, toolbox, mu, lambda_, ngen, s
         diversity = calculate_population_diversity(population)
         diversity_values.append(diversity)
 
-        # Dynamically calculating crossover and mutation probability
+        # Dynamically calculating crossover and mutation probabilities
         current_mutpb = get_adaptive_mutation_prob(gen, ngen)
         current_cxpb = get_adaptive_crossover_prob(gen, ngen)
 
@@ -139,10 +138,10 @@ def eaMuPlusLambdaWithAdaptiveMutation(population, toolbox, mu, lambda_, ngen, s
         for front in fronts:
             tools.emo.assignCrowdingDist(front)
 
-        # Select the mating pool using selTournamentDCD
+        # Select the mating pool using TournamentDCD
         offspring = toolbox.tournament(population, lambda_)
 
-        # Apply variation (crossover and mutation)
+        # Apply crossover and mutation
         offspring = algorithms.varAnd(offspring, toolbox, cxpb=current_cxpb, mutpb=current_mutpb)
 
         # Evaluating offspring fitness
@@ -167,7 +166,7 @@ def eaMuPlusLambdaWithAdaptiveMutation(population, toolbox, mu, lambda_, ngen, s
 
 
 # calling evolution process
-result_population, logbook, diversity_values = eaMuPlusLambdaWithAdaptiveMutation(
+result_population, logbook, diversity_values = ea_custom(
     population,
     toolbox,
     mu=population_size,
@@ -219,7 +218,6 @@ plt.legend()
 plt.grid(True)
 plt.show()
 
-
 # Plot Diversity Over Generations
 plt.figure(figsize=(12, 4))
 plt.plot(generations, diversity_values, label="Diversity", color='purple', linestyle='-', marker='o', alpha=0.7)
@@ -229,7 +227,6 @@ plt.title("Diversity Over Generations")
 plt.legend()
 plt.grid(True)
 plt.show()
-
 
 # Displaying Pareto Front
 print("\nPareto Front:")
@@ -249,11 +246,11 @@ print("\nEvaluating SVM with Selected Features:")
 X_train_selected = X_train[:, selected_features]
 X_test_selected = X_test[:, selected_features]
 
-# Train SVM on Selected Features
-svm_model = SVC(probability=True, kernel="linear", random_state=42)  # Linear kernel for simplicity
+# Training SVM on Selected Features
+svm_model = SVC(probability=True, kernel="linear", random_state=42)
 svm_model.fit(X_train_selected, y_train)
 
-# Predict and Evaluate
+# Prediction Stage and Evaluation
 y_pred_svm = svm_model.predict(X_test_selected)
 y_proba_svm = svm_model.predict_proba(X_test_selected)[:, 1]
 svm_f1 = f1_score(y_test, y_pred_svm)

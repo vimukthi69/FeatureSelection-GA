@@ -11,7 +11,6 @@ from scipy.spatial.distance import pdist, squareform
 
 
 # -------------------------- helper functions --------------------------
-# Adaptive Crossover function to gradually decrease the crossover probability
 def get_adaptive_crossover_prob(current_gen, total_gen, max_cxpb=0.9, min_cxpb=0.6):
     return max_cxpb - ((max_cxpb - min_cxpb) * (current_gen / total_gen))
 
@@ -21,23 +20,23 @@ def get_adaptive_mutation_prob(current_gen, total_gen, min_mutpb=0.2, max_mutpb=
 
 
 def calculate_population_diversity(population):
-    unique_individuals = len(set(map(tuple, population)))  # Counting unique individuals
+    unique_individuals = len(set(map(tuple, population)))
     total_population = len(population)
     diversity = unique_individuals / total_population
     return diversity
 
 
 # dataset preparation for fitness function
-X = np.load('encoded_text.npy')  # Load encoded features from .npy file
-df = pd.read_csv('dataset/processed_sentiment_data.csv')  # Load the sentiment labels
-y = df['sentiment']  # Load binaries (target class)
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)  # train test split
+X = np.load('encoded_text.npy')
+df = pd.read_csv('dataset/processed_sentiment_data.csv')
+y = df['sentiment']
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
 # -------------------------- DEAP Setup --------------------------
-creator.create("FitnessMulti", base.Fitness, weights=(1.0, 1.0, 1.0))  # to maximize all metrics
+creator.create("FitnessMulti", base.Fitness, weights=(1.0, 1.0, 1.0))
 creator.create("Individual", list, fitness=creator.FitnessMulti)
 toolbox = base.Toolbox()
-n_features = X_train.shape[1]  # retrieving genome size, which should be 384
+n_features = X_train.shape[1]
 toolbox.register("attr_bool", random.randint, 0, 1)
 toolbox.register("individual", tools.initRepeat, creator.Individual, toolbox.attr_bool, n_features)
 toolbox.register("population", tools.initRepeat, list, toolbox.individual)
@@ -47,14 +46,14 @@ toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 def fitness_function(individual):
     # Select features based on the binary coded individual
     selected_features = [i for i, bit in enumerate(individual) if bit == 1]
-    if not selected_features:  # Handling case where no features are selected
-        return 0.0, 0.0, 0.0  # Return all metrics as 0.0
+    if not selected_features:
+        return 0.0, 0.0, 0.0
 
-    # Subset the training and test data
+    # Subset of the training and test data
     X_train_selected = X_train[:, selected_features]
     X_test_selected = X_test[:, selected_features]
 
-    # Train a Logistic Regression model
+    # Training a Logistic Regression model
     model = LogisticRegression(max_iter=500)
     model.fit(X_train_selected, y_train)
 
@@ -140,10 +139,10 @@ def eaMuPlusLambdaWithAdaptiveMutation(population, toolbox, mu, lambda_, ngen, s
         for front in fronts:
             tools.emo.assignCrowdingDist(front)
 
-        # Select the mating pool using selTournamentDCD
+        # Selecting the mating pool using TournamentDCD
         offspring = toolbox.tournament(population, lambda_)
 
-        # Apply variation (crossover and mutation)
+        # Apply crossover and mutation
         offspring = algorithms.varAnd(offspring, toolbox, cxpb=current_cxpb, mutpb=current_mutpb)
 
         # Evaluating offspring fitness
@@ -167,10 +166,10 @@ def eaMuPlusLambdaWithAdaptiveMutation(population, toolbox, mu, lambda_, ngen, s
     return population, logbook, diversity_values
 
 
-# Run the GA for 4 iterations
+# Running the GA for 4 iterations
 num_iterations = 4
 
-# Lists to store results for plotting (for all iterations)
+# Lists to store results for plotting for all iterations
 f1_max_all_iterations = []
 f1_mean_all_iterations = []
 accuracy_max_all_iterations = []
@@ -188,7 +187,6 @@ for iteration in range(num_iterations):
     population = toolbox.population(n=population_size)
     hof.clear()
 
-    # Run the GA with adaptive mutation
     result_population, logbook, diversity_values = eaMuPlusLambdaWithAdaptiveMutation(
         population,
         toolbox,
@@ -199,7 +197,7 @@ for iteration in range(num_iterations):
         verbose=True,
     )
 
-    # Collect F1, Accuracy, and AUC max and mean values for this iteration
+    # Collecting F1, Accuracy, and AUC max and mean values for current iteration
     generations = logbook.select("gen")
     f1_max = logbook.chapters["F1"].select("max")
     f1_mean = logbook.chapters["F1"].select("mean")
@@ -208,11 +206,11 @@ for iteration in range(num_iterations):
     auc_max = logbook.chapters["AUC"].select("max")
     auc_mean = logbook.chapters["AUC"].select("mean")
 
-    # Store generations from the first iteration for consistency
+    # Storing generations from the first iteration for consistency
     if iteration == 0:
         generations_all_iterations.append(generations)
 
-    # Append results from this iteration to the corresponding lists
+    # Appending results from current iteration to the corresponding lists
     f1_max_all_iterations.append(f1_max)
     f1_mean_all_iterations.append(f1_mean)
     accuracy_max_all_iterations.append(accuracy_max)
@@ -220,7 +218,7 @@ for iteration in range(num_iterations):
     auc_max_all_iterations.append(auc_max)
     auc_mean_all_iterations.append(auc_mean)
 
-# Plot Max F1 Score Over Generations for each iteration
+# Max F1 Score Over Generations for each iteration
 plt.figure(figsize=(12, 4))
 for i in range(num_iterations):
     plt.plot(generations_all_iterations[0], f1_max_all_iterations[i], label=f"Max F1 Iter {i+1}", marker='o', markersize=6, linestyle='-', alpha=0.7)
@@ -231,7 +229,7 @@ plt.legend()
 plt.grid(True)
 plt.show()
 
-# Plot Mean F1 Score Over Generations for each iteration
+# Mean F1 Score Over Generations for each iteration
 plt.figure(figsize=(12, 4))
 for i in range(num_iterations):
     plt.plot(generations_all_iterations[0], f1_mean_all_iterations[i], label=f"Mean F1 Iter {i+1}", marker='x', markersize=6, linestyle='--', alpha=0.7)
@@ -242,7 +240,7 @@ plt.legend()
 plt.grid(True)
 plt.show()
 
-# Plot Max Accuracy Over Generations for each iteration
+# Max Accuracy Over Generations for each iteration
 plt.figure(figsize=(12, 4))
 for i in range(num_iterations):
     plt.plot(generations_all_iterations[0], accuracy_max_all_iterations[i], label=f"Max Accuracy Iter {i+1}", marker='o', markersize=6, linestyle='-', alpha=0.7)
@@ -253,7 +251,7 @@ plt.legend()
 plt.grid(True)
 plt.show()
 
-# Plot Mean Accuracy Over Generations for each iteration
+# Mean Accuracy Over Generations for each iteration
 plt.figure(figsize=(12, 4))
 for i in range(num_iterations):
     plt.plot(generations_all_iterations[0], accuracy_mean_all_iterations[i], label=f"Mean Accuracy Iter {i+1}", marker='x', markersize=6, linestyle='--', alpha=0.7)
@@ -264,7 +262,7 @@ plt.legend()
 plt.grid(True)
 plt.show()
 
-# Plot Max AUC Over Generations for each iteration
+# Max AUC Over Generations for each iteration
 plt.figure(figsize=(12, 4))
 for i in range(num_iterations):
     plt.plot(generations_all_iterations[0], auc_max_all_iterations[i], label=f"Max AUC Iter {i+1}", marker='o', markersize=6, linestyle='-', alpha=0.7)
