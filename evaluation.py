@@ -8,17 +8,17 @@ from sklearn.metrics import f1_score, accuracy_score, roc_auc_score
 from sklearn.preprocessing import StandardScaler
 
 # Load encoded features from .npy file
-X = np.load('encoded_text_0.npy')
+X = np.load('encoded_text.npy')
 
 # Load the sentiment labels
-df = pd.read_csv('dataset/processed_sentiment_data_0.csv')
+df = pd.read_csv('dataset/processed_sentiment_data.csv')
 y = df['sentiment']
 
 # Split into training and testing datasets
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
 # Apply PCA to reduce dimensions
-n_components = 176  # Same number as the GA-selected features
+n_components = 203  # Same number as the GA-selected features
 pca = PCA(n_components=n_components)
 X_train_pca = pca.fit_transform(X_train)
 X_test_pca = pca.transform(X_test)
